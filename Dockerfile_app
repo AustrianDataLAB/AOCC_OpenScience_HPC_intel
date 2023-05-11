@@ -56,12 +56,12 @@ COPY source_app /app/source_app
 
 
 
-ENV PATH="${KAIJUHOME}/scripts/preproc:${PATH}" \
-    PATH="${KAIJUHOME}/scripts/datamodel:${PATH}" \
-    PATH="${KAIJUHOME}/scripts/postproc:${PATH}" \
-    PATH="${KAIJUHOME}/scripts/OHelio:${PATH}" \
-    PATH="${KAIJUHOME}/scripts/quicklook:${PATH}" \
-    PATH="${KAIJUHOME}/scripts/legacy:${PATH}"
+ENV PATH="${APPHOME}/scripts/preproc:${PATH}" \
+    PATH="${APPHOME}/scripts/datamodel:${PATH}" \
+    PATH="${APPHOME}/scripts/postproc:${PATH}" \
+    PATH="${APPHOME}/scripts/OHelio:${PATH}" \
+    PATH="${APPHOME}/scripts/quicklook:${PATH}" \
+    PATH="${APPHOME}/scripts/legacy:${PATH}"
 
 # Now comes the Jupyter part
 WORKDIR /

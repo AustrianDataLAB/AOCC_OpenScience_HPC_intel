@@ -1,0 +1,177 @@
+
+FROM ubuntu:20.04 as build
+
+RUN mkdir -p /opt/build && mkdir -p /opt/dist
+RUN apt-get update && apt-get upgrade -y && \
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    ca-certificates curl && \
+  rm -rf /var/lib/apt/lists/*
+
+# install cmake
+RUN cd /opt/build && \
+    curl -LO https://github.com/Kitware/CMake/releases/download/v3.24.2/cmake-3.24.2-linux-x86_64.sh && \
+    mkdir -p /opt/dist//usr/local && \
+    /bin/bash cmake-3.24.2-linux-x86_64.sh --prefix=/opt/dist//usr/local --skip-license &&\
+    rm -rf /opt/dist/usr/local/include && \
+    rm -rf /opt/dist/usr/local/lib/pkgconfig && \
+    find /opt/dist -name "*.a" -exec rm -f {} \; || echo "" &&\
+    rm -rf /opt/dist/usr/local/share/doc. &&\
+    rm -rf /opt/dist/usr/local/share/man
+
+FROM ubuntu:20.04
+## VERSION is used for
+## intel-oneapi-mkl-devel
+## intel-oneapi-python
+## intel-oneapi-compiler-dpcpp-cpp-and-cpp-classic
+## intel-oneapi-compiler-fortran
+
+## intel-oneapi-common-vars should not have a version, gives strange bug
+
+## VERSION_SECOND is used for
+## intel-oneapi-dev-utilities
+## intel-oneapi-mpi-devel
+
+ENV VERSION=2022.2.1 \
+    VERSION_SECOND=2021.7.1 \
+    HDF5_VERSION=hdf5-1_12_2
+
+# COPY third-party-programs.txt /
+RUN apt-get update && apt-get upgrade -y && \
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    curl ca-certificates gpg-agent software-properties-common && \
+  rm -rf /var/lib/apt/lists/*
+# repository to install Intel(R) oneAPI Libraries
+RUN curl -fsSL https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS-2023.PUB | apt-key add -
+RUN echo "deb [trusted=yes] https://apt.repos.intel.com/oneapi all main " > /etc/apt/sources.list.d/oneAPI.list
+
+RUN apt-get update && apt-get upgrade -y && \
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    curl ca-certificates gpg-agent software-properties-common && \
+  rm -rf /var/lib/apt/lists/*
+# repository to install Intel(R) GPU drivers
+RUN curl -fsSL https://repositories.intel.com/graphics/intel-graphics.key | apt-key add -
+RUN echo "deb [trusted=yes arch=amd64] https://repositories.intel.com/graphics/ubuntu focal main" > /etc/apt/sources.list.d/intel-graphics.list
+
+# URL to find out what is what https://www.pugetsystems.com/labs/hpc/Intel-oneAPI-Developer-Tools----Introduction-and-Install-2054/
+RUN apt-get update && apt-get upgrade -y && \
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    ca-certificates build-essential pkg-config gnupg libarchive13 openssh-server openssh-client wget net-tools git \
+#    intel-basekit-getting-started \
+#    intel-oneapi-advisor \
+#    intel-oneapi-ccl-devel \
+#    intel-oneapi-common-licensing \
+    intel-oneapi-common-vars \
+#    intel-oneapi-compiler-dpcpp-cpp \
+#    intel-oneapi-dal-devel \
+    intel-oneapi-dev-utilities=$VERSION_SECOND* \
+#    intel-oneapi-dnnl-devel \
+#    intel-oneapi-dpcpp-debugger \
+#    intel-oneapi-ipp-devel \
+#    intel-oneapi-ippcp-devel \
+#    intel-oneapi-libdpstd-devel \
+    intel-oneapi-mkl-devel=$VERSION* \
+#    intel-oneapi-onevpl-devel \
+    intel-oneapi-python=$VERSION* \
+#    intel-oneapi-tbb-devel \
+#    intel-oneapi-vtune \
+#    intel-opencl-icd \
+#    intel-level-zero-gpu \
+#    level-zero \
+#    level-zero-dev \
+#    intel-hpckit-getting-started \
+#    intel-oneapi-clck \
+    intel-oneapi-compiler-dpcpp-cpp-and-cpp-classic=$VERSION* \
+    intel-oneapi-compiler-fortran=$VERSION* \
+#    intel-oneapi-inspector \
+#    intel-oneapi-itac \
+    intel-oneapi-mpi-devel=$VERSION_SECOND* \
+# globus connect dependency 
+    tk \
+    tcllib && \
+  rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /opt/dist /
+
+ENV LANG=C.UTF-8 \
+    CCL_CONFIGURATION="cpu_gpu_dpcpp" \
+    CCL_ROOT="/opt/intel/oneapi/ccl/${VERSION_SECOND}" \
+    CLASSPATH="/opt/intel/oneapi/mpi/${VERSION_SECOND}/lib/mpi.jar:/opt/intel/oneapi/dal/${VERSION_SECOND}/lib/onedal.jar" \
+    CMPLR_ROOT="/opt/intel/oneapi/compiler/${VERSION}" \
+    CONDA_DEFAULT_ENV="intelpython-python3.9" \
+    CONDA_EXE="/opt/intel/oneapi/intelpython/latest/bin/conda" \
+    CONDA_PREFIX="/opt/intel/oneapi/intelpython/latest" \
+    CONDA_PROMPT_MODIFIER="(intelpython3.9) " \
+    CONDA_PYTHON_EXE="/opt/intel/oneapi/intelpython/latest/bin/python" \
+    CONDA_SHLVL="1" \
+    CPATH="/opt/intel/oneapi/vpl/${VERSION}/include:/opt/intel/oneapi/tbb/${VERSION_SECOND}/env/../include:/opt/intel/oneapi/mpi/${VERSION_SECOND}/include:/opt/intel/oneapi/mkl/${VERSION}/include:/opt/intel/oneapi/ippcp/2021.6.1/include:/opt/intel/oneapi/ipp/2021.6.1/include:/opt/intel/oneapi/dpl/2021.7.1/linux/include:/opt/intel/oneapi/dnnl/${VERSION}/cpu_dpcpp_gpu_dpcpp/include:/opt/intel/oneapi/dev-utilities/${VERSION_SECOND}/include:/opt/intel/oneapi/dal/${VERSION_SECOND}/include:/opt/intel/oneapi/ccl/${VERSION_SECOND}/include/cpu_gpu_dpcpp" \
+    DIAGUTIL_PATH="/opt/intel/oneapi/vtune/2022.4.0/sys_check/vtune_sys_check.py:/opt/intel/oneapi/debugger/${VERSION_SECOND}/sys_check/debugger_sys_check.py:/opt/intel/oneapi/compiler/${VERSION}/sys_check/sys_check.sh:/opt/intel/oneapi/advisor/2022.3.0/sys_check/advisor_sys_check.py:" \
+    FI_PROVIDER_PATH="/opt/intel/oneapi/mpi/${VERSION_SECOND}//libfabric/lib/prov:/usr/lib64/libfabric" \
+    GDB_INFO="/opt/intel/oneapi/debugger/${VERSION_SECOND}/documentation/info/" \
+    INFOPATH="/opt/intel/oneapi/debugger/${VERSION_SECOND}/gdb/intel64/lib" \
+    INTEL_LICENSE_FILE="/opt/intel/licenses:/root/intel/licenses:/opt/intel/oneapi/clck/${VERSION_SECOND}/licensing:/opt/intel/licenses:/root/intel/licenses:/Users/Shared/Library/Application Support/Intel/Licenses" \
+    INTEL_PYTHONHOME="/opt/intel/oneapi/debugger/${VERSION_SECOND}/dep" \
+    I_MPI_ROOT="/opt/intel/oneapi/mpi/${VERSION_SECOND}" \
+    LD_LIBRARY_PATH="/opt/intel/oneapi/vpl/${VERSION}/lib:/opt/intel/oneapi/tbb/${VERSION_SECOND}/env/../lib/intel64/gcc4.8:/opt/intel/oneapi/mpi/${VERSION_SECOND}//libfabric/lib:/opt/intel/oneapi/mpi/${VERSION_SECOND}//lib/release:/opt/intel/oneapi/mpi/${VERSION_SECOND}//lib:/opt/intel/oneapi/mkl/${VERSION}/lib/intel64:/opt/intel/oneapi/itac/${VERSION_SECOND}/slib:/opt/intel/oneapi/ippcp/2021.6.1/lib/intel64:/opt/intel/oneapi/ipp/2021.6.1/lib/intel64:/opt/intel/oneapi/dnnl/${VERSION}/cpu_dpcpp_gpu_dpcpp/lib:/opt/intel/oneapi/debugger/${VERSION_SECOND}/gdb/intel64/lib:/opt/intel/oneapi/debugger/${VERSION_SECOND}/libipt/intel64/lib:/opt/intel/oneapi/debugger/${VERSION_SECOND}/dep/lib:/opt/intel/oneapi/dal/${VERSION_SECOND}/lib/intel64:/opt/intel/oneapi/compiler/${VERSION}/linux/lib:/opt/intel/oneapi/compiler/${VERSION}/linux/lib/x64:/opt/intel/oneapi/compiler/${VERSION}/linux/lib/oclfpga/host/linux64/lib:/opt/intel/oneapi/compiler/${VERSION}/linux/compiler/lib/intel64_lin:/opt/intel/oneapi/ccl/${VERSION_SECOND}/lib/cpu_gpu_dpcpp" \
+    LIBRARY_PATH="/opt/intel/oneapi/vpl/${VERSION}/lib:/opt/intel/oneapi/tbb/${VERSION_SECOND}/env/../lib/intel64/gcc4.8:/opt/intel/oneapi/mpi/${VERSION_SECOND}//libfabric/lib:/opt/intel/oneapi/mpi/${VERSION_SECOND}//lib/release:/opt/intel/oneapi/mpi/${VERSION_SECOND}//lib:/opt/intel/oneapi/mkl/${VERSION}/lib/intel64:/opt/intel/oneapi/ippcp/2021.6.1/lib/intel64:/opt/intel/oneapi/ipp/2021.6.1/lib/intel64:/opt/intel/oneapi/dnnl/${VERSION}/cpu_dpcpp_gpu_dpcpp/lib:/opt/intel/oneapi/dal/${VERSION_SECOND}/lib/intel64:/opt/intel/oneapi/compiler/${VERSION}/linux/compiler/lib/intel64_lin:/opt/intel/oneapi/compiler/${VERSION}/linux/lib:/opt/intel/oneapi/clck/${VERSION_SECOND}/lib/intel64:/opt/intel/oneapi/ccl/${VERSION_SECOND}/lib/cpu_gpu_dpcpp" \
+    MANPATH="/opt/intel/oneapi/mpi/${VERSION_SECOND}/man:/opt/intel/oneapi/itac/${VERSION_SECOND}/man:/opt/intel/oneapi/debugger/${VERSION_SECOND}/documentation/man:/opt/intel/oneapi/compiler/${VERSION}/documentation/en/man/common:/opt/intel/oneapi/clck/${VERSION_SECOND}/man::" \
+    MKLROOT="/opt/intel/oneapi/mkl/${VERSION}" \
+    NLSPATH="/opt/intel/oneapi/mkl/${VERSION}/lib/intel64/locale/%l_%t/%N:/opt/intel/oneapi/compiler/${VERSION}/linux/compiler/lib/intel64_lin/locale/%l_%t/%N" \
+    OCL_ICD_FILENAMES="libintelocl_emu.so:libalteracl.so:/opt/intel/oneapi/compiler/${VERSION}/linux/lib/x64/libintelocl.so" \
+    ONEAPI_ROOT="/opt/intel/oneapi" \
+    PATH="/opt/intel/oneapi/vtune/2022.4.0/bin64:/opt/intel/oneapi/vpl/${VERSION}/bin:/opt/intel/oneapi/mpi/${VERSION_SECOND}//libfabric/bin:/opt/intel/oneapi/mpi/${VERSION_SECOND}/bin:/opt/intel/oneapi/mkl/${VERSION}/bin/intel64:/opt/intel/oneapi/itac/${VERSION_SECOND}/bin:/opt/intel/oneapi/intelpython/latest/bin:/opt/intel/oneapi/intelpython/latest/condabin:/opt/intel/oneapi/inspector/2022.3.0/bin64:/opt/intel/oneapi/dev-utilities/${VERSION_SECOND}/bin:/opt/intel/oneapi/debugger/${VERSION_SECOND}/gdb/intel64/bin:/opt/intel/oneapi/compiler/${VERSION}/linux/lib/oclfpga/bin:/opt/intel/oneapi/compiler/${VERSION}/linux/bin/intel64:/opt/intel/oneapi/compiler/${VERSION}/linux/bin:/opt/intel/oneapi/clck/${VERSION_SECOND}/bin/intel64:/opt/intel/oneapi/advisor/2022.3.0/bin64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+    PKG_CONFIG_PATH="/opt/intel/oneapi/vtune/2022.4.0/include/pkgconfig/lib64:/opt/intel/oneapi/vpl/${VERSION}/lib/pkgconfig:/opt/intel/oneapi/tbb/${VERSION_SECOND}/env/../lib/pkgconfig:/opt/intel/oneapi/mpi/${VERSION_SECOND}/lib/pkgconfig:/opt/intel/oneapi/mkl/${VERSION}/lib/pkgconfig:/opt/intel/oneapi/ippcp/2021.6.1/lib/pkgconfig:/opt/intel/oneapi/inspector/2022.3.0/include/pkgconfig/lib64:/opt/intel/oneapi/dpl/2021.7.1/lib/pkgconfig:/opt/intel/oneapi/dnnl/${VERSION}/cpu_dpcpp_gpu_dpcpp/../lib/pkgconfig:/opt/intel/oneapi/dal/${VERSION_SECOND}/lib/pkgconfig:/opt/intel/oneapi/compiler/${VERSION}/lib/pkgconfig:/opt/intel/oneapi/ccl/${VERSION_SECOND}/lib/pkgconfig:/opt/intel/oneapi/advisor/2022.3.0/include/pkgconfig/lib64:" \
+    SETVARS_COMPLETED="1" \
+    CE_CONDA="" \
+   _CE_M=""
+## Further ENV variable no longer set due to the reduced installation content
+#    CLCK_ROOT="/opt/intel/oneapi/clck/${VERSION_SECOND}" \
+#    CMAKE_PREFIX_PATH="/opt/intel/oneapi/vpl/${VERSION}:/opt/intel/oneapi/tbb/${VERSION_SECOND}/env/..:/opt/intel/oneapi/dnnl/${VERSION}/cpu_dpcpp_gpu_dpcpp/../lib/cmake:/opt/intel/oneapi/dal/${VERSION_SECOND}:/opt/intel/oneapi/compiler/${VERSION}/linux/IntelDPCPP" \
+#    CPLUS_INCLUDE_PATH="/opt/intel/oneapi/clck/${VERSION_SECOND}/include" \
+#    DAALROOT="/opt/intel/oneapi/dal/${VERSION_SECOND}" \
+#    DALROOT="/opt/intel/oneapi/dal/${VERSION_SECOND}" \
+#    DAL_MAJOR_BINARY="1" \
+#    DAL_MINOR_BINARY="1" \
+#    DNNLROOT="/opt/intel/oneapi/dnnl/${VERSION}/cpu_dpcpp_gpu_dpcpp" \
+#    DPL_ROOT="/opt/intel/oneapi/dpl/2021.7.1" \
+#    FPGA_VARS_ARGS="" \
+#    FPGA_VARS_DIR="/opt/intel/oneapi/compiler/${VERSION}/linux/lib/oclfpga" \
+#    INSPECTOR_2022_DIR="/opt/intel/oneapi/inspector/2022.3.0" \
+#    INTELFPGAOCLSDKROOT="/opt/intel/oneapi/compiler/${VERSION}/linux/lib/oclfpga" \
+#    IPPCP_TARGET_ARCH="intel64" \
+#    IPPCRYPTOROOT="/opt/intel/oneapi/ippcp/2021.6.1" \
+#    IPPROOT="/opt/intel/oneapi/ipp/2021.6.1" \
+#    IPP_TARGET_ARCH="intel64" \
+#    PYTHONPATH="/opt/intel/oneapi/advisor/2022.3.0/pythonapi" \
+#    TBBROOT="/opt/intel/oneapi/tbb/${VERSION_SECOND}/env/.." \
+#    VTUNE_PROFILER_2022_DIR="/opt/intel/oneapi/vtune/2022.4.0" \
+#    VTUNE_PROFILER_DIR="/opt/intel/oneapi/vtune/2022.4.0" \
+#    VT_ADD_LIBS="-ldwarf -lelf -lvtunwind -lm -lpthread" \
+#    VT_LIB_DIR="/opt/intel/oneapi/itac/${VERSION_SECOND}/lib" \
+#    VT_MPI="impi4" \
+#    VT_ROOT="/opt/intel/oneapi/itac/${VERSION_SECOND}" \
+#    VT_SLIB_DIR="/opt/intel/oneapi/itac/${VERSION_SECOND}/slib" \
+#    ACL_BOARD_VENDOR_PATH="/opt/Intel/OpenCLFPGA/oneAPI/Boards" \
+#    ADVISOR_2022_DIR="/opt/intel/oneapi/advisor/2022.3.0" \
+#    APM="/opt/intel/oneapi/advisor/2022.3.0/perfmodels" \
+
+
+ENV FC="/opt/intel/oneapi/compiler/${VERSION}/linux/bin/intel64/ifort" \
+    F9X="/opt/intel/oneapi/compiler/${VERSION}/linux/bin/intel64/ifort" \
+    CC="/opt/intel/oneapi/compiler/${VERSION}/linux/bin/intel64/icc" \
+    CXX="/opt/intel/oneapi/compiler/${VERSION}/linux/bin/intel64/icpc"
+
+#install hdf5 
+RUN git clone https://github.com/HDFGroup/hdf5.git -b ${HDF5_VERSION} --single-branch &&\
+    cd hdf5 && \
+    ./configure  --enable-fortran --enable-cxx --enable-build-mode=debug --enable-internal-debug=yes --prefix=/opt/hdf5_ifort/ &&\
+    make -j9 && make install && \
+    cd .. && rm -rf hdf5 && \
+    conda clean -a -y && \
+    apt clean
+
+#set hdf5 variables
+ENV PATH="/opt/hdf5_ifort/bin:${PATH}" \
+    HDF5_DIR="/opt/hdf5_ifort/" \
+    HDF5_LIBRARIES="/opt/hdf5_ifort/lib" \
+    HDF5_INCLUDE_DIRS="/opt/hdf5_ifort/include" \
+    LD_LIBRARY_PATH="/opt/hdf5_ifort:${LD_LIBRARY_PATH}"
